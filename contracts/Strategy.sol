@@ -104,8 +104,14 @@ contract Strategy is BaseStrategy {
         returns (uint256 _totalAssets)
     {
         _totalAssets = asset.balanceOf(address(this));
-        if(!TokenizedStrategy.isShutdown() && claimCollateralGains) {
-            _claimAndSellCollateralGains();
+        if(!TokenizedStrategy.isShutdown()) {
+            if (claimCollateralGains) _claimAndSellCollateralGains();
+
+            // deposit any loose funds
+            uint256 looseAsset = ERC20(asset).balanceOf(address(this));
+            if (looseAsset > 0) {
+                stabilityPool.provideToSP(looseAsset);
+            }
         }
 
         _totalAssets = getTotalAssets();
@@ -193,7 +199,7 @@ contract Strategy is BaseStrategy {
      * @param _totalIdle The current amount of idle funds that are available to deploy.
      *
     */
-    
+
     function _tend(uint256 _totalIdle) internal override {}
 
     /**

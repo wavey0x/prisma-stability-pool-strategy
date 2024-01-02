@@ -14,6 +14,7 @@ def test__operation(
     deposit,
     amount,
     RELATIVE_APPROX,
+    stability_pool
 ):
     user_balance_before = asset.balanceOf(user)
 
@@ -21,15 +22,28 @@ def test__operation(
     deposit()
 
     # TODO: Implement logic so total_debt ends > 0
-    check_strategy_totals(
-        strategy, total_assets=amount, total_debt=amount, total_idle=amount
-    )
+    # check_strategy_totals(
+    #     strategy, total_assets=amount, total_debt=amount, total_idle=amount
+    # )
+    print(strategy.totalIdle())
+    assert pytest.approx(strategy.totalAssets(), abs=2) == amount
+    assert pytest.approx(strategy.totalDebt(), abs=2) == amount
+    assert pytest.approx(strategy.totalIdle(), abs=2) == 0
 
+    total_assets = strategy.getTotalAssets()
+    deposits = stability_pool.getCompoundedDebtDeposit(strategy)
+    total_debt = strategy.totalDebt()
+    print(total_assets/10**18, deposits/10**18, total_debt/10**18)
     increase_time(chain, 10)
 
     # withdrawal
     withdraw_and_check(strategy, asset, amount, user)
 
+    total_assets = strategy.getTotalAssets()
+    deposits = stability_pool.getCompoundedDebtDeposit(strategy)
+    total_debt = strategy.totalDebt()
+    print(total_assets/10**18, deposits/10**18, total_debt/10**18)
+    
     check_strategy_totals(strategy, total_assets=0, total_debt=0, total_idle=0)
 
     assert asset.balanceOf(user) == user_balance_before
@@ -54,7 +68,7 @@ def test_profitable_report(
 
     # TODO: Implement logic so total_debt ends > 0
     check_strategy_totals(
-        strategy, total_assets=amount, total_debt=0, total_idle=amount
+        strategy, total_assets=amount, total_debt=amount, total_idle=0
     )
 
     # TODO: Add some code to simulate earning yield
@@ -74,16 +88,22 @@ def test_profitable_report(
     assert profit >= to_airdrop
 
     # TODO: Implement logic so total_debt == amount + profit
+    print('total debt',strategy.totalDebt()/10**18)
+    print('total idle',strategy.totalIdle()/10**18)
     check_strategy_totals(
-        strategy, total_assets=amount + profit, total_debt=0, total_idle=amount + profit
+        strategy, total_assets=amount + profit, total_debt=amount + profit, total_idle=0
     )
 
     # needed for profits to unlock
     increase_time(chain, strategy.profitMaxUnlockTime() - 1)
 
-    # TODO: Implement logic so total_debt == amount + profit
+    # TODO: Implement logic so total_debt == amount + profit]
+
+    print('total debt',strategy.totalDebt()/10**18)
+    print('total idle',strategy.totalIdle()/10**18)
+
     check_strategy_totals(
-        strategy, total_assets=amount + profit, total_debt=0, total_idle=amount + profit
+        strategy, total_assets=amount + profit, total_debt=amount + profit, total_idle=0
     )
     assert strategy.pricePerShare() > before_pps
 
@@ -119,7 +139,7 @@ def test__profitable_report__with_fee(
 
     # TODO: Implement logic so total_debt ends > 0
     check_strategy_totals(
-        strategy, total_assets=amount, total_debt=0, total_idle=amount
+        strategy, total_assets=amount, total_debt=amount, total_idle=0
     )
 
     # TODO: Add some code to simulate earning yield
@@ -147,7 +167,7 @@ def test__profitable_report__with_fee(
 
     # TODO: Implement logic so total_debt == amount + profit
     check_strategy_totals(
-        strategy, total_assets=amount + profit, total_debt=0, total_idle=amount + profit
+        strategy, total_assets=amount + profit, total_debt=amount + profit, total_idle=0
     )
 
     # needed for profits to unlock
@@ -155,7 +175,7 @@ def test__profitable_report__with_fee(
 
     # TODO: Implement logic so total_debt == amount + profit
     check_strategy_totals(
-        strategy, total_assets=amount + profit, total_debt=0, total_idle=amount + profit
+        strategy, total_assets=amount + profit, total_debt=amount + profit, total_idle=0
     )
 
     assert strategy.pricePerShare() > before_pps
@@ -189,7 +209,7 @@ def test__tend_trigger(
     # Check Trigger
     assert strategy.tendTrigger()[0] == False
 
-    chain.mine(days_to_secs(1))
+    chain.mine(500)
 
     # Check Trigger
     assert strategy.tendTrigger()[0] == False

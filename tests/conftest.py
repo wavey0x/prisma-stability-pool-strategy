@@ -10,7 +10,6 @@ from ape import Contract, project
 def asset(tokens):
     yield Contract(tokens["mkusd"])
 
-
 # Adjust the amount that should be used for testing based on `asset`.
 @pytest.fixture(scope="session")
 def amount(asset, user, whale):
@@ -123,6 +122,9 @@ def strategy(asset, create_strategy):
 
     yield strategy
 
+@pytest.fixture(scope="session")
+def stability_pool(strategy):
+    yield Contract(strategy.stabilityPool())
 
 @pytest.fixture(scope="session")
 def oracle(create_oracle):

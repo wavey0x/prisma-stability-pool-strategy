@@ -22,7 +22,7 @@ def test__shutdown__can_withdraw(
     deposit()
 
     check_strategy_totals(
-        strategy, total_assets=amount, total_debt=0, total_idle=amount
+        strategy, total_assets=amount, total_debt=amount, total_idle=0
     )
 
     chain.mine(14)
@@ -31,7 +31,7 @@ def test__shutdown__can_withdraw(
     strategy.shutdownStrategy(sender=management)
 
     check_strategy_mins(
-        strategy, min_total_assets=amount, min_total_debt=0, min_total_idle=amount
+        strategy, min_total_assets=amount, min_total_debt=amount, min_total_idle=0
     )
 
     # withdrawal

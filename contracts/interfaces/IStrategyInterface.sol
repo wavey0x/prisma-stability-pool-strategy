@@ -5,4 +5,6 @@ import {IStrategy} from "@tokenized-strategy/interfaces/IStrategy.sol";
 
 interface IStrategyInterface is IStrategy {
     //TODO: Add your specific implementation interface in here.
+    function stabilityPool() external view returns(address);
+    function getTotalAssets() external view returns(uint);
 }
