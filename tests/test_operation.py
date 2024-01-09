@@ -48,6 +48,8 @@ def test__operation(
 
     assert asset.balanceOf(user) == user_balance_before
 
+    assert False
+
 
 def test_profitable_report(
     chain,
