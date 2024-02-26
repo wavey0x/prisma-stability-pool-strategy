@@ -6,6 +6,25 @@ from utils.helpers import days_to_secs, increase_time, withdraw_and_check
 import pytest
 
 
+def test_basic_oracle(
+    chain,
+    asset,
+    strategy,
+    user,
+    system_collaterals,
+    price_feed,
+):
+    for collat in system_collaterals:
+        # Manual lookup
+        cl = Contract(price_feed.oracleRecords(collat).chainLinkOracle)
+        data = cl.latestRoundData()
+        # Lookup from strategy
+        price = strategy.getOraclePrice(collat)
+        assert data.answer == price 
+
+    
+
+
 def test__operation(
     chain,
     asset,

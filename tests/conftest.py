@@ -1,5 +1,6 @@
 import pytest
 from ape import Contract, project
+from ape.utils import ZERO_ADDRESS
 
 
 ############ CONFIG FIXTURES ############
@@ -90,11 +91,34 @@ def set_protocol_fee(factory):
 
     yield set_protocol_fee
 
+@pytest.fixture(scope="session")
+def factory():
+    yield Contract('0x70b66E20766b775B2E9cE5B718bbD285Af59b7E1')
 
 @pytest.fixture(scope="session")
-def create_strategy(management, keeper, rewards):
+def prisma_vault():
+    yield Contract('0x06bDF212C290473dCACea9793890C5024c7Eb02c')
+
+@pytest.fixture(scope="session")
+def price_feed():
+    yield Contract('0xC105CeAcAeD23cad3E9607666FEF0b773BC86aac')
+
+@pytest.fixture(scope="session")
+def stability_pool():
+    yield Contract('0xed8B26D99834540C5013701bB3715faFD39993Ba')
+
+@pytest.fixture(scope="session")
+def create_strategy(management, keeper, asset, rewards, prisma_vault, factory, stability_pool, price_feed):
     def create_strategy(asset, performanceFee=1_000):
-        strategy = management.deploy(project.Strategy, asset, "yStrategy-Example")
+        strategy = management.deploy(
+            project.Strategy, 
+            asset, 
+            "PrismaStabilityPoolFarmer",
+            factory,
+            stability_pool,
+            prisma_vault,
+            price_feed,
+        )
         strategy = project.IStrategyInterface.at(strategy.address)
 
         strategy.setKeeper(keeper, sender=management)
@@ -123,10 +147,6 @@ def strategy(asset, create_strategy):
     yield strategy
 
 @pytest.fixture(scope="session")
-def stability_pool(strategy):
-    yield Contract(strategy.stabilityPool())
-
-@pytest.fixture(scope="session")
 def oracle(create_oracle):
     oracle = create_oracle()
 
@@ -144,6 +164,17 @@ def deposit(strategy, asset, user, amount):
 
     yield deposit
 
+@pytest.fixture(scope="session")
+def system_collaterals(factory):
+    count = factory.troveManagerCount()
+    collaterals = []
+    for i in range (0, count):
+        tm = factory.troveManagers(i)
+        if tm == ZERO_ADDRESS:
+            break
+        c = Contract(Contract(tm).collateralToken())
+        collaterals.append(c.address)
+    return collaterals
 
 @pytest.fixture(scope="session")
 def RELATIVE_APPROX():
