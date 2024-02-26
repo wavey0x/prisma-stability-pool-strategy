@@ -60,10 +60,11 @@ def tokens():
 
 
 @pytest.fixture(scope="session")
-def whale(accounts):
+def whale(accounts, asset, user):
     # Prisma Fee receiver
-    yield accounts["0xfdCE0267803C6a0D209D3721d2f01Fd618e9CBF8"]
-
+    w = accounts["0xfdCE0267803C6a0D209D3721d2f01Fd618e9CBF8"]
+    asset.transfer(user, 1_000_000 * 10 ** 18, sender=w)
+    yield w
 
 @pytest.fixture(scope="session")
 def weth(tokens):
@@ -104,8 +105,27 @@ def price_feed():
     yield Contract('0xC105CeAcAeD23cad3E9607666FEF0b773BC86aac')
 
 @pytest.fixture(scope="session")
+def liquidation_manager():
+    yield Contract('0x5de309dfd7f94e9e2A18Cb6bA61CA305aBF8e9E2')
+
+@pytest.fixture(scope="session")
 def stability_pool():
     yield Contract('0xed8B26D99834540C5013701bB3715faFD39993Ba')
+
+@pytest.fixture(scope="session")
+def whales(accounts, user, system_collaterals,liquidation_manager):
+    whales = [
+        accounts['0x0B925eD163218f6662a35e0f0371Ac234f9E9371'], # wsteth
+        accounts['0x1BeE69b7dFFfA4E2d53C2a2Df135C388AD25dCD2'], # reth
+        accounts['0xED1F7bb04D2BA2b6EbE087026F03C96Ea2c357A8'], # cbeth
+        accounts['0x78bB3aEC3d855431bd9289fD98dA13F9ebB7ef15'], # sfrxeth
+    ]
+
+    for whale, collat in zip(whales,system_collaterals):
+        c = Contract(collat)
+        c.transfer(liquidation_manager, 100 * 10 ** 18, sender=whale)
+
+    yield whales
 
 @pytest.fixture(scope="session")
 def create_strategy(management, keeper, asset, rewards, prisma_vault, factory, stability_pool, price_feed):
@@ -173,7 +193,8 @@ def system_collaterals(factory):
         if tm == ZERO_ADDRESS:
             break
         c = Contract(Contract(tm).collateralToken())
-        collaterals.append(c.address)
+        if c.address not in collaterals:
+            collaterals.append(c.address)
     return collaterals
 
 @pytest.fixture(scope="session")

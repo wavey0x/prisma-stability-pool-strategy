@@ -15,14 +15,63 @@ def test_basic_oracle(
     price_feed,
 ):
     for collat in system_collaterals:
-        # Manual lookup
-        cl = Contract(price_feed.oracleRecords(collat).chainLinkOracle)
-        data = cl.latestRoundData()
         # Lookup from strategy
         price = strategy.getOraclePrice(collat)
-        assert data.answer == price 
+        assert price > 2_000e18
 
+def test_basic_oracle(
+    chain,
+    asset,
+    strategy,
+    user,
+    deposit,
+    system_collaterals,
+    liquidation_manager,
+    stability_pool,
+    accounts,
+    whales,     # collaterals
+    whale,      # mkusd
+):
+    deposit()
+    lm = accounts[liquidation_manager.address]
+    lm.balance += 10 ** 18
+    debt_amount = 3_000 * 10 ** 18
+    collat_amount = 10 ** 18
+    # Simulate a liquidation
+    for collat in system_collaterals:
+        c = Contract(collat)
+        c.transfer(stability_pool, collat_amount, sender=lm)
+        stability_pool.offset(collat, debt_amount, collat_amount, sender=lm)
+
+    assert False
+    assert strategy.getPriceForAvailableSellTokens(
+        [0,1,2,3]
+    ) > 0
+
+    with ape.reverts():
+        # Fails due to mismatched ordering
+        strategy.getPriceForAvailableSellTokens(
+            [0,2,1]
+        )
+
+    before_balances = []
+    buy_indices = [1,2,3]
+    for i, collat in enumerate(system_collaterals):
+        if i not in buy_indices:
+            continue
+        c = Contract(collat)
+        before_balances.append(c.balanceOf(user))
+
+    asset.approve(strategy, 2 ** 256 - 1, sender=user)
     
+    tx = strategy.buyCollateral(buy_indices, 2 ** 256 - 1, sender=user)
+
+    # Ensure the purchased collat made it to the user
+    for bal, idx in zip(before_balances,buy_indices):
+        c = Contract(strategy.collaterals(idx))
+        assert bal < c.balanceOf(user)
+
+    assert False
 
 
 def test__operation(

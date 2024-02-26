@@ -18,6 +18,10 @@ interface IStrategyInterface is IStrategy {
     function claimsAreMaxBoosted() external view returns (bool);
     function collaterals(uint idx) external view returns (address collateral);
     function lastSyncIndex() external view returns (uint);
-    function getOraclePrice2(address collateral) external view returns (int256);
-    function getOraclePrice(address collateral) external view returns (uint response);
+    
+    function getOraclePrice(address collateral) external view returns (uint);
+
+    function getPriceForAvailableSellTokens(uint[] memory _collateralIndices) external view returns (uint);
+    function buyCollateral(uint[] memory _collateralIndices, uint _maxAmount) external;
+    function getClaimableIndices() external view returns (uint[] memory claimIndices);
 }

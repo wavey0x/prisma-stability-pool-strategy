@@ -51,7 +51,6 @@ contract Strategy is BaseStrategy, OraclePricer {
     bool public forceClaimOnce;
 
     mapping(address collateral => ITroveManager troveManager) public troveManagers;
-    mapping(uint index => address collateral) public collateralByIndex;
 
     struct ClaimParams {
         /// @notice We use this flag to signal a desire to claim even if Yearns locker cant provide max boost.
@@ -61,6 +60,7 @@ contract Strategy is BaseStrategy, OraclePricer {
     }
 
     event CollateralSynced(address collateral);
+    event CollateralSold(address indexed buyer, uint price, uint[] collateralIndices);
 
     constructor(
         address _asset,
@@ -95,7 +95,6 @@ contract Strategy is BaseStrategy, OraclePricer {
             if (claimParams.shouldClaimRewards) {
                 _claimRewards(claimParams.forceClaimOnce, YEARN_LOCKER, 10_000);
             }
-            if (claimCollateralGains) _claimAndSellCollateralGains();
 
             // deposit any loose funds
             uint looseAsset = ERC20(asset).balanceOf(address(this));
@@ -138,14 +137,6 @@ contract Strategy is BaseStrategy, OraclePricer {
         }
     }
 
-    function _claimAndSellCollateralGains() internal returns (uint amount) {
-        // Sync collateral data
-        syncCollaterals();
-        // Claim all our gains
-        (uint[] memory claimIndices, bool shouldClaim) = _getClaimIndices();
-        if (shouldClaim) stabilityPool.claimCollateralGains(address(this), claimIndices);
-    }
-
     function getTotalAssets() public view returns (uint) {
         return getAssetBalance() + stabilityPool.getCompoundedDebtDeposit(address(this));
     }
@@ -156,32 +147,62 @@ contract Strategy is BaseStrategy, OraclePricer {
 
 
     function _tend(uint _totalIdle) internal override {
-        _totalIdle += _claimAndSellCollateralGains();
         _deployFunds(_totalIdle);
     }
 
     function _tendTrigger() internal view override virtual returns (bool) {
-        (, bool shouldClaim) = _getClaimIndices();
-        return shouldClaim;
+
     }
 
-    function _getClaimIndices() internal view returns (uint[] memory claimIndices, bool shouldClaim) {
-        uint claimCount = 0;
+    /**
+        @notice Helper function to help discover which indexes can be claimed from.
+    */
+    function getClaimableIndices() external view returns (uint[] memory claimIndices) {
+        uint claimCount;
         uint[] memory collateralGains = stabilityPool.getDepositorCollateralGain(address(this));
         uint collateralCount = collateralGains.length;
-        // claimIndexes = new uint[](collateralCount);
-        // for (uint i = 0; i < collateralCount; i++) {
-        //     if (collateralGains[i] > 0) {
-        //         count++;
-        //         claimIndexes[claims++] = i;
-        //     }
-        // }
-        // assembly {
-        //     mstore(array, size)
-        // }
-        // if (count == 0) return (claimIndices, false);
+        claimIndices = new uint[](collateralCount);
+        for (uint i = 0; i < collateralCount; i++) {
+            if (collateralGains[i] > 0) {
+                claimIndices[claimCount++] = i;
+            }
+        }
+        assembly {
+            mstore(claimIndices, claimCount)
+        }
+    }
 
-        // claimIndices = new uint[](count);
+    /**
+        @notice Amount needed to purchase the specified collateral.
+    */
+    function getPriceForAvailableSellTokens(uint[] memory _collateralIndices) public view returns (uint) {
+        uint collateralCount = collaterals.length;
+        require(_collateralIndices.length <= collateralCount, "too many indices");
+        uint prev;
+        uint idx;
+        uint totalPrice;
+        uint[] memory collateralGains = stabilityPool.getDepositorCollateralGain(address(this));
+        for (uint i=0; i < _collateralIndices.length; i++) {
+            idx = _collateralIndices[i];
+            require(i == 0 || idx > prev, "Unsorted Order");
+            prev = idx;
+            uint sellAmount = collateralGains[idx];
+            if (sellAmount == 0) {
+                continue;
+            }
+            uint oraclePrice = _fetchPrice(collaterals[_collateralIndices[i]]);
+            totalPrice += (sellAmount * oraclePrice / 1e18);
+        }
+        return totalPrice;
+    }
+
+    function buyCollateral(uint[] memory _collateralIndices, uint _maxAmount) external {
+        uint price = getPriceForAvailableSellTokens(_collateralIndices);
+        require(price <= _maxAmount, "Price too high");
+        asset.transferFrom(msg.sender, address(this), price);
+        stabilityPool.withdrawFromSP(0); // Trigger rewards accrual
+        stabilityPool.claimCollateralGains(msg.sender, _collateralIndices);
+        emit CollateralSold(msg.sender, price, _collateralIndices);
     }
 
     function availableWithdrawLimit(
@@ -210,10 +231,10 @@ contract Strategy is BaseStrategy, OraclePricer {
             address[] memory rewardContracts = new address[](1);
             rewardContracts[0] = address(stabilityPool);
             prismaVault.batchClaimRewards(
-                YEARN_LOCKER, // receiver
-                _boostDelegate, // delegate
-                rewardContracts, // rewards contracts
-                _maxFee // maxFee
+                YEARN_LOCKER,       // receiver
+                _boostDelegate,     // delegate
+                rewardContracts,    // rewards contracts
+                _maxFee             // maxFee
             );
 
             // reset if we forced this one
@@ -256,15 +277,12 @@ contract Strategy is BaseStrategy, OraclePricer {
         return maxBoostable >= claimable;
     }
 
-    function getOraclePrice(address collateral) external returns (uint response) {
-        uint response = _fetchPrice(collateral);
-        require(response > 0, "OracleZero");
-    }
-
-    function getOraclePriceTest(address collateral) external view returns (int256) {
-        address chainLinkOracle = 0x86392dC19c0b719886221c78AB11eb8Cf5c52812;
-        (,int256 price,,,) = IAggregatorV3Interface(chainLinkOracle).latestRoundData();
-        return price;
+    /**
+        * @notice Force a rewards claim from the receiver regardless of max boost.
+    */
+    function getOraclePrice(address collateral) external view returns (uint price) {
+        price = _fetchPrice(collateral);
+        require(price > 0, "OracleZero");
     }
 
     function getCollateralCount() external view returns (uint) {

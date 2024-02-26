@@ -8,7 +8,7 @@ import {IPriceFeed} from "./interfaces/prisma/IPriceFeed.sol";
 
 contract OraclePricer {
 
-    uint constant TARGET_DIGITS = 1e18;
+    uint constant TARGET_DECIMALS = 18;
 
     IPriceFeed public immutable priceFeed; // 0xC105CeAcAeD23cad3E9607666FEF0b773BC86aac
     // Responses are considered stale this many seconds after the oracle's heartbeat
@@ -19,7 +19,7 @@ contract OraclePricer {
         priceFeed = IPriceFeed(_priceFeed);
     }
 
-    function _fetchPrice(address _token) internal returns (uint256) {
+    function _fetchPrice(address _token) internal view returns (uint) {
 
         (
             address chainLinkOracle,
@@ -37,7 +37,7 @@ contract OraclePricer {
 
         require(!_isPriceStale(updated, heartbeat), "stale price");
 
-        uint256 scaledPrice = _scalePriceByDigits(uint256(answer), decimals);
+        uint scaledPrice = _scalePriceByDigits(uint(answer), decimals);
         if (sharePriceSignature != 0) {
             (bool success, bytes memory returnData) = _token.staticcall(abi.encode(sharePriceSignature));
             require(success, "Share price not available");
@@ -57,14 +57,14 @@ contract OraclePricer {
     }
 
     function _scalePriceByDigits(uint256 _price, uint256 _answerDigits) internal pure returns (uint256) {
-        if (_answerDigits == TARGET_DIGITS) {
+        if (_answerDigits == TARGET_DECIMALS) {
             return _price;
-        } else if (_answerDigits < TARGET_DIGITS) {
+        } else if (_answerDigits < TARGET_DECIMALS) {
             // Scale the returned price value up to target precision
-            return _price * (10 ** (TARGET_DIGITS - _answerDigits));
+            return _price * (10 ** (TARGET_DECIMALS - _answerDigits));
         } else {
             // Scale the returned price value down to target precision
-            return _price / (10 ** (_answerDigits - TARGET_DIGITS));
+            return _price / (10 ** (_answerDigits - TARGET_DECIMALS));
         }
     }
 }
