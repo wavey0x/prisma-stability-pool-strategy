@@ -41,4 +41,4 @@ foundry:
   fork:
     ethereum:
       mainnet:
-        upstream_provider: alchemy
+        upstream_provider: http://192.168.1.102:8545

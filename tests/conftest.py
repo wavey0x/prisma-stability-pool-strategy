@@ -14,7 +14,7 @@ def asset(tokens):
 # Adjust the amount that should be used for testing based on `asset`.
 @pytest.fixture(scope="session")
 def amount(asset, user, whale):
-    amount = 100 * 10 ** asset.decimals()
+    amount = 100_000 * 10 ** asset.decimals()
 
     asset.transfer(user, amount, sender=whale)
     yield amount
@@ -82,6 +82,9 @@ def weth_amount(user, weth):
 def factory(strategy):
     yield Contract(strategy.FACTORY())
 
+@pytest.fixture(scope="session")
+def gov(accounts):
+    yield accounts['0xFEB4acf3df3cDEA7399794D0869ef76A6EfAff52']
 
 @pytest.fixture(scope="session")
 def set_protocol_fee(factory):
@@ -93,7 +96,7 @@ def set_protocol_fee(factory):
     yield set_protocol_fee
 
 @pytest.fixture(scope="session")
-def factory():
+def prisma_factory():
     yield Contract('0x70b66E20766b775B2E9cE5B718bbD285Af59b7E1')
 
 @pytest.fixture(scope="session")
@@ -113,6 +116,10 @@ def stability_pool():
     yield Contract('0xed8B26D99834540C5013701bB3715faFD39993Ba')
 
 @pytest.fixture(scope="session")
+def yprisma():
+    yield Contract('0xe3668873D944E4A949DA05fc8bDE419eFF543882')
+
+@pytest.fixture(scope="session")
 def whales(accounts, user, system_collaterals,liquidation_manager):
     whales = [
         accounts['0x0B925eD163218f6662a35e0f0371Ac234f9E9371'], # wsteth
@@ -128,16 +135,18 @@ def whales(accounts, user, system_collaterals,liquidation_manager):
     yield whales
 
 @pytest.fixture(scope="session")
-def create_strategy(management, keeper, asset, rewards, prisma_vault, factory, stability_pool, price_feed):
+def create_strategy(management, keeper, asset, rewards, prisma_vault, prisma_factory, stability_pool, price_feed, gov):
     def create_strategy(asset, performanceFee=1_000):
         strategy = management.deploy(
             project.Strategy, 
             asset, 
             "PrismaStabilityPoolFarmer",
-            factory,
+            prisma_factory,
             stability_pool,
             prisma_vault,
             price_feed,
+            100, # discount
+            gov, 
         )
         strategy = project.IStrategyInterface.at(strategy.address)
 
@@ -185,11 +194,11 @@ def deposit(strategy, asset, user, amount):
     yield deposit
 
 @pytest.fixture(scope="session")
-def system_collaterals(factory):
-    count = factory.troveManagerCount()
+def system_collaterals(prisma_factory):
+    count = prisma_factory.troveManagerCount()
     collaterals = []
     for i in range (0, count):
-        tm = factory.troveManagers(i)
+        tm = prisma_factory.troveManagers(i)
         if tm == ZERO_ADDRESS:
             break
         c = Contract(Contract(tm).collateralToken())
@@ -200,3 +209,23 @@ def system_collaterals(factory):
 @pytest.fixture(scope="session")
 def RELATIVE_APPROX():
     yield 1e-5
+
+@pytest.fixture(scope="function")
+def simulate_liquidations(
+    accounts,
+    system_collaterals, 
+    liquidation_manager,
+    whales,
+    stability_pool,
+):
+    def simulate_liquidations():
+        lm = accounts[liquidation_manager.address]
+        lm.balance += 10 ** 18
+        debt_amount = 3_000 * 10 ** 18
+        collat_amount = 10 ** 18
+        for collat in system_collaterals:
+            c = Contract(collat)
+            c.transfer(stability_pool, collat_amount, sender=lm)
+            stability_pool.offset(collat, debt_amount, collat_amount, sender=lm)
+    
+    yield simulate_liquidations
